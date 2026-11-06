@@ -22,6 +22,7 @@ while True:
         with httpx.stream("POST", URL, json = {
                     "model": "llama3.2",
                     "stream": True,
+                    "stream_options": {"include_usage": True},
                     "messages": messages
                 }, 
                 timeout=30.0) as r:
@@ -36,10 +37,16 @@ while True:
                 if json_part == "[DONE]":
                     break
                 chunk = json.loads(json_part)
+                if "usage" in chunk:
+                    usage = chunk["usage"]
+                if not chunk["choices"]:
+                    continue
                 piece = chunk['choices'][0]['delta'].get("content", "")
                 reply += piece
                 print(piece, end = "", flush=True)
-            print("")
+            print("\n=====================================================================================")
+            print(f"Token In: {usage['prompt_tokens']}, Token Out: {usage['completion_tokens']}")
+            print("=====================================================================================")
     except httpx.ConnectError:
         print("Can't reach Ollama. is it running?")
         messages.pop()
