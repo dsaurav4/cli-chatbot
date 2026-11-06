@@ -1,5 +1,5 @@
 import httpx
-import sys
+import json
 
 URL = "http://localhost:11434/v1/chat/completions"
 
@@ -7,25 +7,45 @@ messages = [
     {"role": "system", "content": "You are a tutor who is teaching how Large Language Models work."},
 ]
 
-while(True):
-    prompt = input("Write your prompt here (Enter 'quit' to exit): ")
+while True:
+    prompt = input("\nWrite your prompt here (Enter 'quit' to exit)>")
 
     if prompt == "quit":
+        print("Have a great day!")
         break
     else:
         messages.append({"role": "user", "content": prompt})
-        
+
+    reply = ""
+
     try:
-        r = httpx.post(URL, json = {
-        "model": "llama3.2",
-        "messages": messages
-    }, timeout=30.0)
-        r.raise_for_status()
+        with httpx.stream("POST", URL, json = {
+                    "model": "llama3.2",
+                    "stream": True,
+                    "messages": messages
+                }, 
+                timeout=30.0) as r:
+            if r.is_error:
+                r.read()
+            r.raise_for_status()
+            print("\nchatbot>", end="", flush=True)
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                json_part = line.removeprefix("data: ")
+                if json_part == "[DONE]":
+                    break
+                chunk = json.loads(json_part)
+                piece = chunk['choices'][0]['delta'].get("content", "")
+                reply += piece
+                print(piece, end = "", flush=True)
+            print("")
     except httpx.ConnectError:
         print("Can't reach Ollama. is it running?")
         messages.pop()
         continue
     except httpx.HTTPStatusError as e:
+        e.response.read()
         print(e.response.text)
         messages.pop()
         continue
@@ -34,8 +54,5 @@ while(True):
         messages.pop()
         continue
     else:
-        response = r.json()
-        reply = response["choices"][0]["message"]["content"]
         messages.append({"role": "assistant", "content": reply})
-        print(reply)
-        print(f"Token In : {response['usage']['prompt_tokens']}, Token Out: {response['usage']['completion_tokens']}")
+            
